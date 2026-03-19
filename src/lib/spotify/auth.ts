@@ -72,6 +72,7 @@ export const authConfig: NextAuthConfig = {
       id: 'spotify',
       name: 'Spotify',
       type: 'oauth',
+      checks: ['state'],
       authorization: {
         url: 'https://accounts.spotify.com/authorize',
         params: {
