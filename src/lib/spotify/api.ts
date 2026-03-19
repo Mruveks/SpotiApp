@@ -1,6 +1,17 @@
 /**
  * Spotify Web API client
- * Handles all API calls with rate limiting, caching, and error handling
+ * Handles all API calls with rate limiting, error handling, and retry logic.
+ *
+ * IMPORTANT — API status as of March 2026:
+ *  - /audio-features        → DEPRECATED (Nov 2024), returns 403 for dev-mode apps
+ *  - /recommendations       → DEPRECATED (Nov 2024), returns 404 for dev-mode apps
+ *  - /artists/{id}/top-tracks → REMOVED (Feb 2026) for dev-mode apps
+ *  - /browse/new-releases   → REMOVED (Feb 2026) for dev-mode apps
+ *  - /browse/featured-playlists → REMOVED (Feb 2026) for dev-mode apps
+ *  - /playlists/{id}/tracks → renamed to /playlists/{id}/items (Feb 2026)
+ *  - /search limit          → max 10 per request (Feb 2026)
+ *  - track.popularity       → removed from response (Feb 2026)
+ *  - user.email/country/followers/product → removed (Feb 2026)
  */
 
 import {
@@ -8,32 +19,15 @@ import {
   SpotifyTrack,
   SpotifyArtist,
   RecentlyPlayedItem,
-  AudioFeatures,
   TimeRange,
   SpotifyPlaylist,
+  SpotifyAlbumFull,
 } from '@/types';
 
 const SPOTIFY_BASE_URL = 'https://api.spotify.com/v1';
 
-// Rate limiting: max 180 requests per minute
-const requestQueue: Array<() => Promise<unknown>> = [];
-let isProcessing = false;
-
-async function processQueue() {
-  if (isProcessing || requestQueue.length === 0) return;
-  isProcessing = true;
-
-  while (requestQueue.length > 0) {
-    const request = requestQueue.shift();
-    if (request) await request();
-    await new Promise((r) => setTimeout(r, 334)); // ~180 req/min
-  }
-
-  isProcessing = false;
-}
-
 /**
- * Core fetch wrapper with auth, error handling, and retry logic
+ * Core fetch wrapper with auth, error handling, and 429-retry logic
  */
 async function spotifyFetch<T>(
   endpoint: string,
@@ -49,11 +43,11 @@ async function spotifyFetch<T>(
       'Content-Type': 'application/json',
       ...options.headers,
     },
-    next: { revalidate: 60 }, // ISR: revalidate every 60 seconds
+    next: { revalidate: 60 },
   });
 
   if (res.status === 429) {
-    const retryAfter = parseInt(res.headers.get('Retry-After') ?? '1', 10);
+    const retryAfter = parseInt(res.headers.get('Retry-After') ?? '2', 10);
     await new Promise((r) => setTimeout(r, retryAfter * 1000));
     return spotifyFetch(endpoint, accessToken, options);
   }
@@ -111,16 +105,30 @@ export async function getUserPlaylists(
 }
 
 // ============================================================
-// Tracks & Audio Features
+// Library endpoints (saved tracks / albums)
 // ============================================================
 
-export async function getAudioFeatures(
+export async function getSavedTracks(
   accessToken: string,
-  trackIds: string[]
-): Promise<{ audio_features: AudioFeatures[] }> {
-  const ids = trackIds.slice(0, 100).join(',');
-  return spotifyFetch(`/audio-features?ids=${ids}`, accessToken);
+  limit = 50,
+  offset = 0
+): Promise<{ items: Array<{ added_at: string; track: SpotifyTrack }>; total: number }> {
+  return spotifyFetch(
+    `/me/tracks?limit=${limit}&offset=${offset}`,
+    accessToken
+  );
 }
+
+export async function getSavedAlbums(
+  accessToken: string,
+  limit = 20
+): Promise<{ items: Array<{ added_at: string; album: SpotifyAlbumFull }>; total: number }> {
+  return spotifyFetch(`/me/albums?limit=${limit}`, accessToken);
+}
+
+// ============================================================
+// Tracks
+// ============================================================
 
 export async function getTrack(
   accessToken: string,
@@ -130,7 +138,33 @@ export async function getTrack(
 }
 
 // ============================================================
-// Search & Discovery
+// Artists
+// ============================================================
+
+export async function getArtist(
+  accessToken: string,
+  artistId: string
+): Promise<SpotifyArtist> {
+  return spotifyFetch(`/artists/${artistId}`, accessToken);
+}
+
+/**
+ * Get an artist's albums (still available as of Feb 2026).
+ * Use this instead of the removed /artists/{id}/top-tracks.
+ */
+export async function getArtistAlbums(
+  accessToken: string,
+  artistId: string,
+  limit = 10
+): Promise<{ items: SpotifyAlbumFull[] }> {
+  return spotifyFetch(
+    `/artists/${artistId}/albums?limit=${limit}&include_groups=album,single`,
+    accessToken
+  );
+}
+
+// ============================================================
+// Search  (limit max 10 per request as of Feb 2026)
 // ============================================================
 
 export async function searchSpotify(
@@ -140,74 +174,27 @@ export async function searchSpotify(
   limit = 10
 ): Promise<{ tracks?: { items: SpotifyTrack[] }; artists?: { items: SpotifyArtist[] } }> {
   const typeStr = types.join(',');
+  const capped = Math.min(limit, 10); // API enforces max 10 from Feb 2026
   return spotifyFetch(
-    `/search?q=${encodeURIComponent(query)}&type=${typeStr}&limit=${limit}`,
+    `/search?q=${encodeURIComponent(query)}&type=${typeStr}&limit=${capped}`,
     accessToken
   );
 }
 
-export async function getRecommendations(
-  accessToken: string,
-  seedArtists: string[] = [],
-  seedTracks: string[] = [],
-  seedGenres: string[] = [],
-  limit = 20
-): Promise<{ tracks: SpotifyTrack[] }> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (seedArtists.length) params.set('seed_artists', seedArtists.slice(0, 5).join(','));
-  if (seedTracks.length) params.set('seed_tracks', seedTracks.slice(0, 5).join(','));
-  if (seedGenres.length) params.set('seed_genres', seedGenres.slice(0, 5).join(','));
-
-  return spotifyFetch(`/recommendations?${params}`, accessToken);
-}
-
 // ============================================================
-// Browse (global charts - using featured playlists)
+// Playlists  (items endpoint — renamed from /tracks in Feb 2026)
 // ============================================================
 
-export async function getFeaturedPlaylists(
-  accessToken: string,
-  country?: string,
-  limit = 20
-): Promise<{ playlists: { items: SpotifyPlaylist[] } }> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (country) params.set('country', country);
-  return spotifyFetch(`/browse/featured-playlists?${params}`, accessToken);
-}
-
-export async function getPlaylistTracks(
+/**
+ * Fetch tracks from a playlist the current user owns or collaborates on.
+ * NOTE: As of February 2026, items are only returned for playlists owned
+ * by or collaborated on by the authenticated user. Public playlists return
+ * only metadata.
+ */
+export async function getPlaylistItems(
   accessToken: string,
   playlistId: string,
   limit = 50
 ): Promise<{ items: Array<{ track: SpotifyTrack }> }> {
-  return spotifyFetch(`/playlists/${playlistId}/tracks?limit=${limit}`, accessToken);
-}
-
-export async function getArtist(
-  accessToken: string,
-  artistId: string
-): Promise<SpotifyArtist> {
-  return spotifyFetch(`/artists/${artistId}`, accessToken);
-}
-
-export async function getArtistTopTracks(
-  accessToken: string,
-  artistId: string,
-  market = 'US'
-): Promise<{ tracks: SpotifyTrack[] }> {
-  return spotifyFetch(`/artists/${artistId}/top-tracks?market=${market}`, accessToken);
-}
-
-// ============================================================
-// New Releases & Trending
-// ============================================================
-
-export async function getNewReleases(
-  accessToken: string,
-  country?: string,
-  limit = 20
-): Promise<{ albums: { items: Array<{ id: string; name: string; artists: SpotifyArtist[]; images: { url: string }[] }> } }> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (country) params.set('country', country);
-  return spotifyFetch(`/browse/new-releases?${params}`, accessToken);
+  return spotifyFetch(`/playlists/${playlistId}/items?limit=${limit}`, accessToken);
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { useTopTracks, useTopArtists, useRecentlyPlayed, useAudioProfile, useGenreStats, useRecommendations } from '@/hooks/useSpotify';
+import { useTopTracks, useTopArtists, useRecentlyPlayed, useAudioProfile, useGenreStats, useSavedTracks } from '@/hooks/useSpotify';
 import { useAppStore } from '@/store/useAppStore';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -26,7 +26,7 @@ export function ProfileView() {
   const { data: recent = [] } = useRecentlyPlayed();
   const { data: audioProfile } = useAudioProfile(selectedTimeRange);
   const { data: genres } = useGenreStats(selectedTimeRange);
-  const { data: recommendations = [] } = useRecommendations(selectedTimeRange);
+  const { data: recommendations = [] } = useSavedTracks();
 
   const moodLabel = audioProfile
     ? calculateAudioMoodLabel(audioProfile.valence, audioProfile.energy)
@@ -163,9 +163,9 @@ export function ProfileView() {
 
           {/* Recommendations */}
           <Card>
-            <CardHeader title="Recommended For You" icon={<Heart className="w-4 h-4" />} subtitle="based on your taste" />
+            <CardHeader title="Your Saved Tracks" icon={<Heart className="w-4 h-4" />} subtitle="from your Spotify library" />
             <div className="space-y-2">
-              {recommendations.slice(0, 6).map((track) => (
+              {recommendations.slice(0, 6).map((track: import('@/types').SpotifyTrack) => (
                 <div key={track.id} className="flex items-center gap-2 group">
                   <img
                     src={getImageUrl(track.album.images)}

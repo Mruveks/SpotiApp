@@ -1,7 +1,6 @@
 'use client';
 
 import { AIInsight } from '@/types';
-import { mockAIInsights } from '@/lib/spotify/mockData';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Sparkles, TrendingUp, Lightbulb, Search, Music } from 'lucide-react';
@@ -54,7 +53,7 @@ interface AIInsightsProps {
   insights?: AIInsight[];
 }
 
-export function AIInsights({ insights = mockAIInsights }: AIInsightsProps) {
+export function AIInsights({ insights = [] }: AIInsightsProps) {
   return (
     <Card className="h-full">
       <CardHeader

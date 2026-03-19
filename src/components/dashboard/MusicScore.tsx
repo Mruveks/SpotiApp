@@ -1,7 +1,6 @@
 'use client';
 
 import { MusicIntelligenceScore } from '@/types';
-import { mockMusicScore } from '@/lib/spotify/mockData';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Brain, Star } from 'lucide-react';
@@ -75,7 +74,8 @@ interface MusicScoreCardProps {
   score?: MusicIntelligenceScore;
 }
 
-export function MusicScoreCard({ score = mockMusicScore }: MusicScoreCardProps) {
+export function MusicScoreCard({ score }: MusicScoreCardProps) {
+  if (!score) return null;
   return (
     <Card glow="purple" className="h-full">
       <CardHeader

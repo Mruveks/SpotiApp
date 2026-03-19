@@ -1,16 +1,20 @@
 // ============================================================
 // Spotify API Types
+// Note: Several fields were removed from the Spotify Web API
+// in November 2024 and February 2026 and are now optional.
 // ============================================================
 
 export interface SpotifyUser {
   id: string;
   display_name: string;
-  email: string;
   images: SpotifyImage[];
-  country: string;
-  followers: { total: number };
-  product: string;
   external_urls: { spotify: string };
+  // Removed in February 2026 from Dev Mode apps:
+  email?: string;
+  country?: string;
+  followers?: { total: number };
+  product?: string;
+  explicit_content?: { filter_enabled: boolean; filter_locked: boolean };
 }
 
 export interface SpotifyImage {
@@ -24,9 +28,10 @@ export interface SpotifyArtist {
   name: string;
   images: SpotifyImage[];
   genres: string[];
-  popularity: number;
   followers: { total: number };
   external_urls: { spotify: string };
+  // May be unavailable depending on app quota:
+  popularity?: number;
 }
 
 export interface SpotifyTrack {
@@ -35,9 +40,11 @@ export interface SpotifyTrack {
   artists: SpotifyArtist[];
   album: SpotifyAlbum;
   duration_ms: number;
-  popularity: number;
   preview_url: string | null;
   external_urls: { spotify: string };
+  // Removed in February 2026:
+  popularity?: number;
+  // Deprecated November 2024 (audio-features endpoint returns 403):
   audio_features?: AudioFeatures;
 }
 
@@ -48,8 +55,11 @@ export interface SpotifyAlbum {
   release_date: string;
   artists: SpotifyArtist[];
   album_type: string;
+  // Removed in February 2026:
+  popularity?: number;
 }
 
+/** @deprecated Audio Features endpoint deprecated November 2024 */
 export interface AudioFeatures {
   danceability: number;
   energy: number;
@@ -85,6 +95,17 @@ export interface SpotifyPlaylist {
   public: boolean;
 }
 
+export interface SpotifyAlbumFull {
+  id: string;
+  name: string;
+  images: SpotifyImage[];
+  release_date: string;
+  artists: SpotifyArtist[];
+  album_type: string;
+  total_tracks: number;
+  external_urls: { spotify: string };
+}
+
 // ============================================================
 // App-specific Types
 // ============================================================
@@ -105,7 +126,7 @@ export interface TrendingItem {
   id: string;
   name: string;
   artist: string;
-  change: number; // percentage change
+  change: number;
   rank: number;
   imageUrl: string;
   previewUrl?: string;
