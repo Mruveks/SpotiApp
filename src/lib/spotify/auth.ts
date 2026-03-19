@@ -74,7 +74,10 @@ export const authConfig: NextAuthConfig = {
       type: 'oauth',
       authorization: {
         url: 'https://accounts.spotify.com/authorize',
-        params: { scope: SPOTIFY_SCOPES },
+        params: {
+          scope: SPOTIFY_SCOPES,
+          redirect_uri: `${process.env.NEXTAUTH_URL ?? process.env.AUTH_URL}/api/auth/callback/spotify`,
+        },
       },
       token: 'https://accounts.spotify.com/api/token',
       userinfo: 'https://api.spotify.com/v1/me',
