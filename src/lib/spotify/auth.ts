@@ -131,6 +131,7 @@ export const authConfig: NextAuthConfig = {
       };
     },
   },
+  trustHost: true,
   pages: {
     signIn: '/login',
     error: '/login',
